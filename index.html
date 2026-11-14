@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickNote — Voice & Text Cards</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'card-in': 'cardIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'card-out': 'cardOut 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'pulse-ring': 'pulseRing 1.5s cubic-bezier(0.24, 0, 0.38, 1) infinite',
+                    },
+                    keyframes: {
+                        cardIn: {
+                            '0%': { opacity: '0', transform: 'translateY(16px) scale(0.98)' },
+                            '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+                        },
+                        cardOut: {
+                            '0%': { opacity: '1', transform: 'scale(1)' },
+                            '100%': { opacity: '0', transform: 'scale(0.95)' },
+                        },
+                        pulseRing: {
+                            '0%': { transform: 'scale(0.95)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' },
+                            '70%': { transform: 'scale(1)', boxShadow: '0 0 0 10px rgba(239, 68, 68, 0)' },
+                            '100%': { transform: 'scale(0.95)', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased h-screen flex flex-col overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
+
+    <!-- Top Header -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20 shrink-0">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm shadow-indigo-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-semibold text-slate-900 leading-tight">QuickNote</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Instant voice & text cards saved locally</p>
+                </div>
+            </div>
+
+            <!-- Status & Counter -->
+            <div class="flex items-center gap-3">
+                <span id="db-status" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span id="db-status-text">Synced</span>
+                </span>
+                <span id="card-counter" class="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    0 cards
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Toast / Notification Banner (Replaces alert()) -->
+    <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-md px-4"></div>
+
+    <!-- Main Scrollable Display Area -->
+    <main id="main-scroll-area" class="flex-1 overflow-y-auto scroll-smooth">
+        <div class="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-36">
+            
+            <!-- Empty State Placeholder -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center text-center py-20 px-4">
+                <div class="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mb-4 border border-indigo-100 shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="3"/>
+                        <path d="M8 12h8"/>
+                        <path d="M12 8v8"/>
+                    </svg>
+                </div>
+                <h2 class="text-lg font-semibold text-slate-800 mb-1">No cards yet</h2>
+                <p class="text-sm text-slate-500 max-w-sm leading-relaxed">
+                    Type a note below or tap the microphone button to dictate your thoughts. Every card is automatically saved in your browser's IndexedDB.
+                </p>
+            </div>
+
+            <!-- Cards Container -->
+            <div id="cards-list" class="flex flex-col gap-3.5">
+                <!-- Cards will be dynamically injected here -->
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Fixed Bottom Input Bar -->
+    <footer class="fixed bottom-0 inset-x-0 z-30 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent pt-4 pb-4 sm:pb-6 px-4 sm:px-6">
+        <div class="max-w-3xl mx-auto">
+            
+            <!-- Live Voice Status Pill -->
+            <div id="voice-indicator" class="hidden mb-2.5 flex items-center justify-between bg-red-50 border border-red-200 text-red-700 px-3.5 py-2 rounded-xl text-xs font-medium shadow-sm">
+                <div class="flex items-center gap-2">
+                    <span class="relative flex h-2.5 w-2.5">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                    </span>
+                    <span id="voice-status-label">Listening... Speak into your microphone</span>
+                </div>
+                <button type="button" id="stop-voice-link" class="underline hover:text-red-900 font-semibold ml-3">
+                    Stop
+                </button>
+            </div>
+
+            <!-- Input Container -->
+            <div class="bg-white rounded-2xl shadow-lg shadow-slate-200/70 border border-slate-200/90 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all duration-200 p-2 flex items-end gap-2">
+                
+                <!-- Multi-line Textarea -->
+                <textarea 
+                    id="note-input" 
+                    rows="1" 
+                    placeholder="Write a note or use voice input... (Enter to send, Shift+Enter for new line)" 
+                    class="flex-1 max-h-40 min-h-[44px] py-2.5 px-3 bg-transparent text-slate-800 placeholder-slate-400 text-sm sm:text-base resize-none focus:outline-none leading-relaxed"
+                    aria-label="Note text input"
+                ></textarea>
+
+                <!-- Action Buttons Wrapper -->
+                <div class="flex items-center gap-1.5 pb-0.5 shrink-0">
+                    
+                    <!-- Voice Input Button -->
+                    <button 
+                        type="button" 
+                        id="voice-btn" 
+                        title="Voice Input"
+                        aria-label="Toggle voice input"
+                        class="w-11 h-11 rounded-xl flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    >
+                        <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" x2="12" y1="19" y2="22"/>
+                        </svg>
+                    </button>
+
+                    <!-- Enter / Send Button -->
+                    <button 
+                        type="button" 
+                        id="send-btn" 
+                        title="Add Card (Enter)"
+                        aria-label="Submit note card"
+                        class="h-11 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-medium text-sm flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-200 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
+                    >
+                        <span class="hidden sm:inline">Enter</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Application Script -->
+    <script>
+        /**
+         * QuickNote Web Application
+         * Features: IndexedDB Persistence, Web Speech API Dictation, Auto-expanding Textarea, Responsive Card UI
+         */
+
+        // ==========================================
+        // 1. IndexedDB Storage Layer
+        // ==========================================
+        const DB_NAME = 'QuickNoteCardsDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'cards';
+
+        class CardDatabase {
+            constructor() {
+                this.db = null;
+            }
+
+            /**
+             * Opens and initializes the IndexedDB database
+             */
+            async init() {
+                return new Promise((resolve, reject) => {
+                    if (!('indexedDB' in window)) {
+                        reject(new Error('IndexedDB is not supported in this browser.'));
+                        return;
+                    }
+
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                            objectStore.createIndex('createdAt', 'createdAt', { unique: false });
+                        }
+                    };
+
+                    request.onsuccess = (event) => {
+                        this.db = event.target.result;
+                        resolve(this.db);
+                    };
+
+                    request.onerror = (event) => {
+                        reject(event.target.error || new Error('Failed to open IndexedDB.'));
+                    };
+                });
+            }
+
+            /**
+             * Adds a new card record to IndexedDB
+             * @param {Object} cardObj - { id, text, createdAt }
+             */
+            async addCard(cardObj) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) return reject(new Error('Database not initialized.'));
+                    const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.add(cardObj);
+
+                    request.onsuccess = () => resolve(cardObj);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            }
+
+            /**
+             * Retrieves all cards sorted chronologically (oldest to newest)
+             */
+            async getAllCards() {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) return reject(new Error('Database not initialized.'));
+                    const transaction = this.db.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+
+                    request.onsuccess = () => {
+                        const results = request.result || [];
+                        results.sort((a, b) => a.createdAt - b.createdAt);
+                        resolve(results);
+                    };
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            }
+
+            /**
+             * Deletes a card record by ID
+             * @param {string} id
+             */
+            async deleteCard(id) {
+                return new Promise((resolve, reject) => {
+                    if (!this.db) return reject(new Error('Database not initialized.'));
+                    const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.delete(id);
+
+                    request.onsuccess = () => resolve(true);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            }
+        }
+
+        // ==========================================
+        // 2. DOM Elements & State
+        // ==========================================
+        const db = new CardDatabase();
+        const noteInput = document.getElementById('note-input');
+        const sendBtn = document.getElementById('send-btn');
+        const voiceBtn = document.getElementById('voice-btn');
+        const stopVoiceLink = document.getElementById('stop-voice-link');
+        const voiceIndicator = document.getElementById('voice-indicator');
+        const voiceStatusLabel = document.getElementById('voice-status-label');
+        const cardsList = document.getElementById('cards-list');
+        const emptyState = document.getElementById('empty-state');
+        const cardCounter = document.getElementById('card-counter');
+        const dbStatusText = document.getElementById('db-status-text');
+        const mainScrollArea = document.getElementById('main-scroll-area');
+        const toastContainer = document.getElementById('toast-container');
+
+        let cardCount = 0;
+        let isListening = false;
+        let recognition = null;
+        let baseTextBeforeSpeech = '';
+
+        // ==========================================
+        // 3. UI Helper Functions
+        // ==========================================
+
+        /**
+         * Displays a non-blocking toast notification
+         */
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const colors = {
+                info: 'bg-slate-800 text-white border-slate-700',
+                error: 'bg-red-600 text-white border-red-500',
+                warning: 'bg-amber-600 text-white border-amber-500'
+            };
+
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium shadow-lg border flex items-center gap-2 animate-card-in ${colors[type] || colors.info}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.replace('animate-card-in', 'animate-card-out');
+                setTimeout(() => toast.remove(), 250);
+            }, 3500);
+        }
+
+        /**
+         * Auto-resizes the textarea height based on content
+         */
+        function adjustTextareaHeight() {
+            noteInput.style.height = 'auto';
+            noteInput.style.height = Math.min(noteInput.scrollHeight, 160) + 'px';
+            updateSendButtonState();
+        }
+
+        /**
+         * Enables or disables the Enter button depending on whether input has non-whitespace text
+         */
+        function updateSendButtonState() {
+            const hasText = noteInput.value.trim().length > 0;
+            sendBtn.disabled = !hasText;
+        }
+
+        /**
+         * Updates the card counter badge and toggles empty-state visibility
+         */
+        function updateEmptyAndCounterState() {
+            cardCounter.textContent = `${cardCount} ${cardCount === 1 ? 'card' : 'cards'}`;
+            if (cardCount === 0) {
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+            }
+        }
+
+        /**
+         * Formats a Unix timestamp into a clean, readable date/time string
+         */
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return new Intl.DateTimeFormat(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+            }).format(date);
+        }
+
+        /**
+         * Creates and appends a Card DOM element to the display area
+         */
+        function renderCardElement(cardObj, animate = true) {
+            const cardEl = document.createElement('article');
+            cardEl.id = `card-${cardObj.id}`;
+            cardEl.className = `group bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300/90 transition-all duration-200 flex items-start justify-between gap-4 ${animate ? 'animate-card-in' : ''}`;
+
+            // Left content wrapper (Text + Timestamp)
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'flex-1 min-w-0';
+
+            const textP = document.createElement('p');
+            textP.className = 'text-slate-800 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words';
+            textP.textContent = cardObj.text; // Safe XSS-free insertion
+
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'mt-2.5 flex items-center gap-2 text-xs text-slate-400 font-medium';
+            metaDiv.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <time datetime="${new Date(cardObj.createdAt).toISOString()}">${formatTimestamp(cardObj.createdAt)}</time>
+            `;
+
+            contentDiv.appendChild(textP);
+            contentDiv.appendChild(metaDiv);
+
+            // Right Delete Button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.title = 'Delete card';
+            deleteBtn.setAttribute('aria-label', 'Delete card');
+            deleteBtn.className = 'shrink-0 p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-colors duration-150 sm:opacity-70 sm:group-hover:opacity-100';
+            deleteBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+            `;
+
+            deleteBtn.addEventListener('click', () => handleDeleteCard(cardObj.id, cardEl));
+
+            cardEl.appendChild(contentDiv);
+            cardEl.appendChild(deleteBtn);
+            cardsList.appendChild(cardEl);
+        }
+
+        /**
+         * Scrolls the main container smoothly to the newest card at the bottom
+         */
+        function scrollToBottom() {
+            requestAnimationFrame(() => {
+                mainScrollArea.scrollTop = mainScrollArea.scrollHeight;
+            });
+        }
+
+        // ==========================================
+        // 4. Card Creation & Deletion Handlers
+        // ==========================================
+
+        /**
+         * Handles submitting the textarea text into a card & IndexedDB
+         */
+        async function handleCreateCard() {
+            const rawText = noteInput.value;
+            const trimmedText = rawText.trim();
+
+            if (!trimmedText) return;
+
+            // Stop active speech recognition cleanly if running during submit
+            if (isListening && recognition) {
+                recognition.stop();
+            }
+
+            // Immediately clear textarea as required
+            noteInput.value = '';
+            baseTextBeforeSpeech = '';
+            adjustTextareaHeight();
+            noteInput.focus();
+
+            const newCard = {
+                id: typeof crypto !== 'undefined' && crypto.randomUUID 
+                    ? crypto.randomUUID() 
+                    : `card_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                text: trimmedText,
+                createdAt: Date.now()
+            };
+
+            try {
+                dbStatusText.textContent = 'Saving...';
+                await db.addCard(newCard);
+                dbStatusText.textContent = 'Synced';
+
+                renderCardElement(newCard, true);
+                cardCount++;
+                updateEmptyAndCounterState();
+                scrollToBottom();
+            } catch (error) {
+                console.error('Failed to save card to IndexedDB:', error);
+                dbStatusText.textContent = 'Error';
+                showToast('Could not save note to IndexedDB.', 'error');
+            }
+        }
+
+        /**
+         * Handles removing a card from UI and IndexedDB
+         */
+        async function handleDeleteCard(id, cardElement) {
+            try {
+                dbStatusText.textContent = 'Deleting...';
+                await db.deleteCard(id);
+                dbStatusText.textContent = 'Synced';
+
+                cardElement.classList.add('animate-card-out');
+                setTimeout(() => {
+                    cardElement.remove();
+                    cardCount = Math.max(0, cardCount - 1);
+                    updateEmptyAndCounterState();
+                }, 220);
+            } catch (error) {
+                console.error('Failed to delete card from IndexedDB:', error);
+                dbStatusText.textContent = 'Error';
+                showToast('Failed to delete card from database.', 'error');
+            }
+        }
+
+        // ==========================================
+        // 5. Web Speech API (Voice Input)
+        // ==========================================
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                // Graceful fallback when browser does not support SpeechRecognition
+                voiceBtn.classList.add('opacity-50');
+                voiceBtn.title = 'Voice input not supported in this browser';
+                voiceBtn.addEventListener('click', () => {
+                    showToast('Voice input is not supported in this browser. Try Chrome, Edge, or Safari.', 'warning');
+                });
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = navigator.language || 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                baseTextBeforeSpeech = noteInput.value;
+                if (baseTextBeforeSpeech && !baseTextBeforeSpeech.endsWith(' ') && !baseTextBeforeSpeech.endsWith('\n')) {
+                    baseTextBeforeSpeech += ' ';
+                }
+
+                // Update UI to active listening state
+                voiceBtn.classList.remove('text-slate-500', 'hover:text-indigo-600', 'hover:bg-indigo-50');
+                voiceBtn.classList.add('bg-red-500', 'text-white', 'animate-pulse-ring');
+                voiceIndicator.classList.remove('hidden');
+                voiceStatusLabel.textContent = 'Listening... Speak clearly into your microphone';
+            };
+
+            recognition.onresult = (event) => {
+                let finalTranscript = '';
+                let interimTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                if (finalTranscript) {
+                    baseTextBeforeSpeech += finalTranscript;
+                }
+
+                noteInput.value = baseTextBeforeSpeech + interimTranscript;
+                adjustTextareaHeight();
+            };
+
+            recognition.onerror = (event) => {
+                console.warn('Speech recognition error:', event.error);
+                if (event.error === 'not-allowed') {
+                    showToast('Microphone permission denied. Please allow microphone access.', 'error');
+                } else if (event.error === 'no-speech') {
+                    showToast('No speech detected. Please try again.', 'info');
+                } else if (event.error !== 'aborted') {
+                    showToast(`Voice input error: ${event.error}`, 'error');
+                }
+                stopListeningUI();
+            };
+
+            recognition.onend = () => {
+                stopListeningUI();
+            };
+
+            voiceBtn.addEventListener('click', () => {
+                if (isListening) {
+                    recognition.stop();
+                } else {
+                    try {
+                        recognition.start();
+                    } catch (err) {
+                        console.error('Recognition start failed:', err);
+                    }
+                }
+            });
+
+            stopVoiceLink.addEventListener('click', () => {
+                if (isListening && recognition) {
+                    recognition.stop();
+                }
+            });
+        }
+
+        function stopListeningUI() {
+            isListening = false;
+            voiceBtn.classList.remove('bg-red-500', 'text-white', 'animate-pulse-ring');
+            voiceBtn.classList.add('text-slate-500', 'hover:text-indigo-600', 'hover:bg-indigo-50');
+            voiceIndicator.classList.add('hidden');
+        }
+
+        // ==========================================
+        // 6. Event Listeners & Initialization
+        // ==========================================
+
+        // Textarea input resizing & button state
+        noteInput.addEventListener('input', adjustTextareaHeight);
+
+        // Enter to submit, Shift+Enter for newline
+        noteInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleCreateCard();
+            }
+        });
+
+        // Send button click
+        sendBtn.addEventListener('click', handleCreateCard);
+
+        // Initialize app on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            updateSendButtonState();
+            initSpeechRecognition();
+
+            try {
+                await db.init();
+                const savedCards = await db.getAllCards();
+
+                savedCards.forEach(card => renderCardElement(card, false));
+                cardCount = savedCards.length;
+                updateEmptyAndCounterState();
+
+                if (cardCount > 0) {
+                    scrollToBottom();
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                dbStatusText.textContent = 'Offline';
+                showToast('IndexedDB unavailable. Notes will not persist across reloads.', 'error');
+                updateEmptyAndCounterState();
+            }
+        });
+    </script>
+</body>
+</html>
